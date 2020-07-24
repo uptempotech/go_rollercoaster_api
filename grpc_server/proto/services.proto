@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = ".;proto";
+
+message RollerCoaster {
+    string Name = 1;
+    string Manufacturer = 2;
+    string CoasterID = 3;
+    string InPark = 4;
+    int32 Height = 5;
+}
+
+message GetCoastersRequest {
+    string Empty = 1;
+}
+
+message GetCoastersResponse {
+    repeated RollerCoaster Coasters = 1;
+}
+
+message GetCoasterRequest {
+    string CoasterID = 1;
+}
+
+message GetCoasterResponse {
+    RollerCoaster Coaster = 1;
+}
+
+message AddNewCoasterRequest {
+    RollerCoaster Coaster = 1;
+}
+
+message AddNewCoasterResponse {
+    string Result = 1;
+    bool Success = 2;
+}
+
+service CoasterService {
+    rpc GetCoasters(GetCoastersRequest) returns (GetCoastersResponse);
+    rpc GetCoaster(GetCoasterRequest) returns (GetCoasterResponse);
+    rpc AddNewCoaster(AddNewCoasterRequest) returns (AddNewCoasterResponse);
+}

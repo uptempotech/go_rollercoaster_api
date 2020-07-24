@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,15 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
+	"google.golang.org/grpc"
 
 	"github.com/joho/godotenv"
-	"github.com/uptempotech/go_rollercoaster_api/global"
+	"github.com/uptempotech/go_rollercoaster_api/grpc_client/proto"
 )
 
-var coastersCollection mongo.Collection
+var client proto.CoasterServiceClient
 
 // Coaster struct defines a coaster
 type Coaster struct {
@@ -25,7 +24,7 @@ type Coaster struct {
 	Manufacturer string `json:"manufacturer"`
 	ID           string `json:"id"`
 	InPark       string `json:"inPark"`
-	Height       int    `json:"height"`
+	Height       int32  `json:"height"`
 }
 
 type coasterHandlers struct{}
@@ -47,33 +46,25 @@ func (h *coasterHandlers) coasters(w http.ResponseWriter, r *http.Request) {
 
 func (h *coasterHandlers) get(w http.ResponseWriter, r *http.Request) {
 	var coasters []Coaster
-	ctx, cancel := global.NewDBContext(5 * time.Second)
-	defer cancel()
 
-	cursor, err := coastersCollection.Find(ctx, bson.D{})
+	data := &proto.GetCoastersRequest{
+		Empty: "",
+	}
+
+	res, err := client.GetCoasters(context.Background(), data)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
 		return
 	}
-	defer cursor.Close(ctx)
 
-	for cursor.Next(ctx) {
-		data := &global.Coaster{}
-
-		err = cursor.Decode(&data)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
+	for _, coaster := range res.Coasters {
 		newCoaster := Coaster{
-			Name:         data.Name,
-			Manufacturer: data.Manufacturer,
-			ID:           data.CoasterID,
-			InPark:       data.InPark,
-			Height:       data.Height,
+			Name:         coaster.Name,
+			Manufacturer: coaster.Manufacturer,
+			ID:           coaster.CoasterID,
+			InPark:       coaster.InPark,
+			Height:       coaster.Height,
 		}
 
 		coasters = append(coasters, newCoaster)
@@ -98,23 +89,23 @@ func (h *coasterHandlers) getCoaster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := global.NewDBContext(5 * time.Second)
-	defer cancel()
+	req := &proto.GetCoasterRequest{
+		CoasterID: parts[2],
+	}
 
-	var data global.Coaster
-	filter := bson.M{"coaster_id": parts[2]}
-	coastersCollection.FindOne(ctx, filter).Decode(&data)
-	if data == global.NilCoaster {
-		w.WriteHeader(http.StatusNotFound)
+	res, err := client.GetCoaster(context.Background(), req)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
 		return
 	}
 
 	coaster := Coaster{
-		Name:         data.Name,
-		Manufacturer: data.Manufacturer,
-		ID:           data.CoasterID,
-		InPark:       data.InPark,
-		Height:       data.Height,
+		Name:         res.Coaster.Name,
+		Manufacturer: res.Coaster.Manufacturer,
+		ID:           res.Coaster.CoasterID,
+		InPark:       res.Coaster.InPark,
+		Height:       res.Coaster.Height,
 	}
 
 	jsonBytes, err := json.Marshal(coaster)
@@ -152,21 +143,17 @@ func (h *coasterHandlers) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := primitive.NewObjectID()
 	coaster.ID = fmt.Sprintf("%d", time.Now().UnixNano())
-	mCoster := &global.Coaster{
-		ID:           id,
-		Name:         coaster.Name,
-		Manufacturer: coaster.Manufacturer,
-		CoasterID:    coaster.ID,
-		InPark:       coaster.InPark,
-		Height:       coaster.Height,
-	}
+	_, err = client.AddNewCoaster(context.Background(), &proto.AddNewCoasterRequest{
+		Coaster: &proto.RollerCoaster{
+			Name:         coaster.Name,
+			Manufacturer: coaster.Manufacturer,
+			CoasterID:    coaster.ID,
+			InPark:       coaster.InPark,
+			Height:       coaster.Height,
+		},
+	})
 
-	ctx, cancel := global.NewDBContext(5 * time.Second)
-	defer cancel()
-
-	_, err = coastersCollection.InsertOne(ctx, mCoster)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -208,7 +195,11 @@ func (a adminPortal) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	coastersCollection = *global.DB.Collection("roller_coasters")
+	conn, err := grpc.Dial("localhost:5000", grpc.WithInsecure())
+	if err != nil {
+		panic(err)
+	}
+	client = proto.NewCoasterServiceClient(conn)
 
 	//admin := newAdminPortal()
 
@@ -217,7 +208,7 @@ func main() {
 	http.HandleFunc("/coasters/", coasterHandlers.getCoaster)
 	//http.HandleFunc("/admin", admin.handler)
 
-	err := http.ListenAndServe(":8082", nil)
+	err = http.ListenAndServe(":8082", nil)
 	if err != nil {
 		panic(err)
 	}
