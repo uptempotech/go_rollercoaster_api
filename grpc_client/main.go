@@ -13,19 +13,11 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/joho/godotenv"
+	"github.com/uptempotech/go_rollercoaster_api/grpc_client/global"
 	"github.com/uptempotech/go_rollercoaster_api/grpc_client/proto"
 )
 
 var client proto.CoasterServiceClient
-
-// Coaster struct defines a coaster
-type Coaster struct {
-	Name         string `json:"name"`
-	Manufacturer string `json:"manufacturer"`
-	ID           string `json:"id"`
-	InPark       string `json:"inPark"`
-	Height       int32  `json:"height"`
-}
 
 type coasterHandlers struct{}
 
@@ -45,7 +37,7 @@ func (h *coasterHandlers) coasters(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *coasterHandlers) get(w http.ResponseWriter, r *http.Request) {
-	var coasters []Coaster
+	var coasters []global.Coaster
 
 	data := &proto.GetCoastersRequest{
 		Empty: "",
@@ -59,10 +51,10 @@ func (h *coasterHandlers) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, coaster := range res.Coasters {
-		newCoaster := Coaster{
+		newCoaster := global.Coaster{
 			Name:         coaster.Name,
 			Manufacturer: coaster.Manufacturer,
-			ID:           coaster.CoasterID,
+			CoasterID:    coaster.CoasterID,
 			InPark:       coaster.InPark,
 			Height:       coaster.Height,
 		}
@@ -100,10 +92,10 @@ func (h *coasterHandlers) getCoaster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	coaster := Coaster{
+	coaster := global.Coaster{
 		Name:         res.Coaster.Name,
 		Manufacturer: res.Coaster.Manufacturer,
-		ID:           res.Coaster.CoasterID,
+		CoasterID:    res.Coaster.CoasterID,
 		InPark:       res.Coaster.InPark,
 		Height:       res.Coaster.Height,
 	}
@@ -135,7 +127,7 @@ func (h *coasterHandlers) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var coaster Coaster
+	var coaster global.Coaster
 	err = json.Unmarshal(bodyBytes, &coaster)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -143,12 +135,12 @@ func (h *coasterHandlers) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	coaster.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+	coaster.CoasterID = fmt.Sprintf("%d", time.Now().UnixNano())
 	_, err = client.AddNewCoaster(context.Background(), &proto.AddNewCoasterRequest{
 		Coaster: &proto.RollerCoaster{
 			Name:         coaster.Name,
 			Manufacturer: coaster.Manufacturer,
-			CoasterID:    coaster.ID,
+			CoasterID:    coaster.CoasterID,
 			InPark:       coaster.InPark,
 			Height:       coaster.Height,
 		},
